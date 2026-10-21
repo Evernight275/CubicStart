@@ -1,2 +1,2 @@
 # CubicStart
-CLIMinecraftStarter
+CLIMinecraftLauncher
