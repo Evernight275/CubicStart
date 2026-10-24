@@ -62,9 +62,15 @@ func prepare(ctx context.Context, options Options) (plan Plan, err error) {
 	if err := ctx.Err(); err != nil {
 		return plan, err
 	}
-	version := options.Version
+	version := options.Installation.Version
 	if err := config.ValidID(version.ID); err != nil {
 		return plan, err
+	}
+	if err := config.ValidID(options.Instance.ID); err != nil {
+		return plan, fmt.Errorf("invalid instance ID: %w", err)
+	}
+	if options.Instance.VersionID != version.ID || options.Instance.Directory == "" {
+		return plan, fmt.Errorf("instance must select the prepared installation")
 	}
 	if options.MemoryMB < 512 || options.MemoryMB > 65536 {
 		return plan, fmt.Errorf("memory must be between 512 and 65536 MiB")
@@ -72,7 +78,7 @@ func prepare(ctx context.Context, options Options) (plan Plan, err error) {
 	if options.Java.Major < version.JavaVersion.Major {
 		return plan, fmt.Errorf("Minecraft %s requires Java %d; selected Java is %d", version.ID, version.JavaVersion.Major, options.Java.Major)
 	}
-	versionDir := filepath.Join(options.Paths.Versions, version.ID)
+	versionDir := options.Installation.Directory
 	clientJar := filepath.Join(versionDir, version.ID+".jar")
 	if err := requireFile(clientJar); err != nil {
 		return plan, err
@@ -85,7 +91,7 @@ func prepare(ctx context.Context, options Options) (plan Plan, err error) {
 	}
 	var classpath []string
 	for _, library := range version.Libraries {
-		allowed, ruleErr := metadata.Allowed(library.Rules, options.Platform)
+		allowed, ruleErr := metadata.Allowed(library.Rules, options.Installation.Platform)
 		if ruleErr != nil {
 			return plan, ruleErr
 		}
@@ -102,7 +108,7 @@ func prepare(ctx context.Context, options Options) (plan Plan, err error) {
 		classpath = append(classpath, path)
 	}
 	classpath = append(classpath, clientJar)
-	gameDir := filepath.Join(options.Paths.Instances, version.ID)
+	gameDir := options.Instance.Directory
 	if err := os.MkdirAll(gameDir, 0755); err != nil {
 		return plan, err
 	}
@@ -127,7 +133,7 @@ func prepare(ctx context.Context, options Options) (plan Plan, err error) {
 		"user_type": options.Session.UserType, "clientid": options.Session.ClientID, "auth_xuid": options.Session.XUID,
 		"user_properties": "{}",
 	}
-	args, err := expandArguments(version.Arguments.JVM, options.Platform, values)
+	args, err := expandArguments(version.Arguments.JVM, options.Installation.Platform, values)
 	if err != nil {
 		return plan, err
 	}
@@ -147,7 +153,7 @@ func prepare(ctx context.Context, options Options) (plan Plan, err error) {
 		args = append(args, argument)
 	}
 	args = append(args, version.MainClass)
-	gameArgs, err := expandArguments(version.Arguments.Game, options.Platform, values)
+	gameArgs, err := expandArguments(version.Arguments.Game, options.Installation.Platform, values)
 	if err != nil {
 		return plan, err
 	}

@@ -28,3 +28,6 @@ type Downloader interface {
 func NewDownloader(client *http.Client, workers int) Downloader {
 	return newDownloader(client, workers)
 }
+
+// Verify checks a local file's size and SHA-1 without downloading or changing it.
+func Verify(ctx context.Context, file File) error { return verify(ctx, file) }

@@ -7,10 +7,11 @@ cmd/cubicstart/       程序入口：建立取消信号，调用 cli，返回退
 internal/
   cli/               命令层：命令解析、参数校验、进度和结果展示
   app/               应用层：组织登录、安装、启动等完整用例
-  core/              核心概念：版本、资源、规则、玩家、游戏会话、Java 环境
+  core/              核心概念：版本、本地安装、游戏实例、资源、规则、玩家、会话、Java 环境
   auth/              微软登录、令牌刷新、Minecraft 玩家身份
   metadata/          版本列表、版本描述、资源索引、平台条件规则
   download/          文件下载、重试、完整性校验、下载缓存
+  installation/      本地版本记录、目标平台所需文件与完整性检查
   java/              Java 路径查找、版本检查、运行环境选择
   launch/            启动参数构建、原生库准备、游戏进程管理
   config/            配置读写、数据目录和实例路径管理
@@ -19,7 +20,7 @@ internal/
 ## 依赖方向
 
 ```text
-cli → app → auth / metadata / download / java / launch / config
+cli → app → auth / metadata / download / installation / java / launch / config
        app / 职责包 → core → 标准库
 ```
 
@@ -29,16 +30,19 @@ cli → app → auth / metadata / download / java / launch / config
 - 职责包不依赖 `cli` 或 `app`；确有需要时可以单向依赖其他职责包，避免循环依赖。
 - `launch` 接收已经解析的启动信息，负责构建参数和管理进程；登录、下载等步骤由 `app` 协调。
 - `config` 保存普通配置；敏感令牌的存储由 `auth` 负责，避免写入普通配置文件。
+- `config` 读写实例的版本选择，根据实例 ID 解析目录，不从实例配置接受任意绝对目录。实例文件在启动准备成功后原子保存，预览不保存选择。
+- `installation` 读取本地版本记录，统一解析安装和启动校验所需的文件。`Read` 只读记录；`Verify` 按目标平台校验实际文件，不访问网络、不保存永久有效的“完整”标志。版本元数据仍在下载成功后最后发布，兼容已有安装目录。
 - 跨包共享的核心模型统一放在 `core`；操作参数、下载任务、设备授权码、目录布局和带清理行为的启动计划仍留在对应职责包。
 - `core` 只依赖标准库，不依赖其他 `internal` 包或第三方库，不承载网络、凭据存储和进程操作；根目录架构测试检查其导入边界。
 
 ## 核心概念
 
-`core/interface.go` 是以下 15 个共享模型的唯一定义位置，不在原包保留转发别名：
+`core/interface.go` 是以下 17 个共享模型的唯一定义位置，不在原包保留转发别名：
 
 - 玩家与会话：`Player`、`Session`。认证结果直接用于启动，离线身份也使用同一会话模型。
 - 运行环境：`JavaRuntime`、`Platform`。
 - 游戏版本：`VersionManifest`、`VersionSummary`、`GameVersion`。
+- 本地安装和游戏实例：`Installation`、`Instance`。安装包含版本、本地版本目录和目标运行平台；实例包含稳定 ID、所选版本 ID 和独立游戏目录。多个实例可以引用同一版本；显式切换版本保留实例目录。
 - 文件、依赖与资源：`Artifact`、`Library`、`AssetIndex`、`AssetObject`、`LogConfig`。
 - 条件与参数：`Rule`、`OSRule`、`Argument`。参数值的 JSON 编码规则由模型自身处理。
 
@@ -62,6 +66,8 @@ cli → app → auth / metadata / download / java / launch / config
 | `app` | `Versions`、`Install`、`CheckJava`、`Login`、`Whoami`、`Logout`、`PrepareLaunch`、`RunGame`、`DataPaths`，各自对应明确用例 |
 | `metadata` | `Catalog`：读取版本清单和版本描述 |
 | `download` | `Downloader`：下载并校验单个文件或一批文件 |
+| `installation` | `Read`、`Files`、`Verify`、`Publish`：读取记录、解析所需文件、校验本地安装、发布完成记录 |
+| `config` | `ReadInstance`、`SaveInstance`：读取和保存实例版本选择，目录由实例 ID 派生 |
 | `auth` | `Login`、`RefreshSession`、`Logout`，分别负责授权、刷新会话和清除凭据 |
 | `java` | `Check`：检查指定 Java 可执行文件 |
 | `launch` | `Prepare`、`Run`：准备游戏启动参数、执行游戏进程 |

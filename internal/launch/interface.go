@@ -14,12 +14,12 @@ import (
 )
 
 type Options struct {
-	Version  core.GameVersion
-	Paths    config.Paths
-	Java     core.JavaRuntime
-	Platform core.Platform
-	Session  core.Session
-	MemoryMB int
+	Installation core.Installation
+	Instance     core.Instance
+	Paths        config.Paths
+	Java         core.JavaRuntime
+	Session      core.Session
+	MemoryMB     int
 }
 
 type Plan struct {
@@ -32,7 +32,8 @@ type Plan struct {
 func (p Plan) Close() error           { return closePlan(p) }
 func (p Plan) RedactedArgs() []string { return redactedArgs(p.Args) }
 
-// Prepare builds game arguments and prepares the temporary native directory.
+// Prepare builds arguments for an instance using its selected installation,
+// whose files the caller has verified, and prepares temporary native libraries.
 func Prepare(ctx context.Context, options Options) (Plan, error) { return prepare(ctx, options) }
 
 // Run starts a prepared game process and releases its temporary native directory.

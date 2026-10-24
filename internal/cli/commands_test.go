@@ -16,10 +16,17 @@ func TestHelpAndUsageErrors(t *testing.T) {
 			t.Fatalf("%v: output %q, error %v", args, output.String(), err)
 		}
 	}
-	for _, args := range [][]string{{"unknown"}, {"install"}, {"install", "1.21.1", "--workers", "0"}, {"launch", "1.21.1", "--memory", "10"}, {"versions", "--type", "bad"}, {"versions", "--limit", "-1"}, {"launch", "1.21.1", "--unknown"}} {
+	for _, args := range [][]string{{"unknown"}, {"install"}, {"install", "1.21.1", "--workers", "0"}, {"launch"}, {"launch", "1.21.1", "extra", "--instance", "survival"}, {"launch", "1.21.1", "--memory", "10"}, {"versions", "--type", "bad"}, {"versions", "--limit", "-1"}, {"launch", "1.21.1", "--unknown"}} {
 		if err := Run(context.Background(), args, Streams{}); ExitCode(err) != 2 {
 			t.Errorf("%v: want usage error, got %v", args, err)
 		}
+	}
+}
+
+func TestNamedInstanceWithoutVersion(t *testing.T) {
+	err := Run(context.Background(), []string{"launch", "--instance", "survival", "--offline", "--dir", t.TempDir()}, Streams{})
+	if err == nil || ExitCode(err) != 1 || !strings.Contains(err.Error(), "provide a version") {
+		t.Fatalf("named instance was not parsed without a version: %v", err)
 	}
 }
 

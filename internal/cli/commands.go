@@ -27,7 +27,7 @@ Usage:
   cubicstart login [--client-id ID]
   cubicstart whoami
   cubicstart logout
-  cubicstart launch <version> [--java PATH] [--memory 2048] [--dir PATH]
+  cubicstart launch [version] [--instance NAME] [--java PATH] [--memory 2048] [--dir PATH]
                     [--offline --username Player] [--dry-run]
   cubicstart paths [--dir PATH]
   cubicstart version
@@ -99,7 +99,7 @@ func run(ctx context.Context, args []string, streams Streams) error {
 	flags.SetOutput(io.Discard)
 	flags.Usage = func() { fmt.Fprint(streams.Out, help) }
 	root := flags.String("dir", os.Getenv("CUBICSTART_HOME"), "launcher data directory")
-	var kind, javaPath, clientID, username string
+	var kind, javaPath, clientID, username, instanceID string
 	var limit, workers, memory int
 	var offline, dryRun bool
 	switch command {
@@ -117,6 +117,7 @@ func run(ctx context.Context, args []string, streams Streams) error {
 		}
 		flags.StringVar(&clientID, "client-id", defaultID, "Microsoft application client ID")
 	case "launch":
+		flags.StringVar(&instanceID, "instance", "", "independent game instance (defaults to the version ID)")
 		flags.StringVar(&javaPath, "java", "", "Java executable")
 		flags.IntVar(&memory, "memory", 2048, "maximum heap in MiB")
 		flags.BoolVar(&offline, "offline", false, "explicit local offline identity")
@@ -131,10 +132,14 @@ func run(ctx context.Context, args []string, streams Streams) error {
 		return usage("%s: %v", command, err)
 	}
 	expected := 0
-	if command == "install" || command == "launch" {
+	if command == "install" {
 		expected = 1
 	}
-	if len(positionals) != expected {
+	if command == "launch" {
+		if len(positionals) > 1 || (len(positionals) == 0 && instanceID == "") {
+			return usage("launch requires a version or --instance NAME; run cubicstart --help")
+		}
+	} else if len(positionals) != expected {
 		return usage("%s expects %d version argument(s); run cubicstart --help", command, expected)
 	}
 	if command == "versions" && (limit < 0 || (kind != "release" && kind != "snapshot" && kind != "all")) {
@@ -162,7 +167,7 @@ func run(ctx context.Context, args []string, streams Streams) error {
 			}
 		}
 	case "install":
-		version, err := app.Install(ctx, options, positionals[0], func(progress download.Progress) {
+		installed, err := app.Install(ctx, options, positionals[0], func(progress download.Progress) {
 			if progress.Completed == 1 || progress.Completed%100 == 0 || progress.Completed == progress.Total {
 				fmt.Fprintf(streams.Err, "Files ready: %d/%d\n", progress.Completed, progress.Total)
 			}
@@ -170,7 +175,7 @@ func run(ctx context.Context, args []string, streams Streams) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(streams.Out, "Installed Minecraft %s (Java %d required)\n", version.ID, version.JavaVersion.Major)
+		fmt.Fprintf(streams.Out, "Installed Minecraft %s (Java %d required)\n", installed.Version.ID, installed.Version.JavaVersion.Major)
 	case "java":
 		runtime, err := app.CheckJava(ctx, javaPath)
 		if err != nil {
@@ -203,7 +208,11 @@ func run(ctx context.Context, args []string, streams Streams) error {
 		}
 		return json.NewEncoder(streams.Out).Encode(paths)
 	case "launch":
-		plan, err := app.PrepareLaunch(ctx, *root, app.LaunchOptions{Version: positionals[0], JavaPath: javaPath, Username: username, Offline: offline, MemoryMB: memory})
+		var version string
+		if len(positionals) == 1 {
+			version = positionals[0]
+		}
+		plan, err := app.PrepareLaunch(ctx, *root, app.LaunchOptions{Version: version, Instance: instanceID, JavaPath: javaPath, Username: username, Offline: offline, Preview: dryRun, MemoryMB: memory})
 		if err != nil {
 			return err
 		}

@@ -130,10 +130,11 @@ func TestInstallCacheRepairAndPrepare(t *testing.T) {
 	if err != nil || len(versions) != 1 {
 		t.Fatalf("versions: %v, %v", versions, err)
 	}
-	version, err := Install(ctx, fixture.options, "latest", nil)
+	installed, err := Install(ctx, fixture.options, "latest", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	version := installed.Version
 	if version.ID != "1.21-test" || fixture.requests.Load() != 4 {
 		t.Fatalf("installation: %s, %d requests", version.ID, fixture.requests.Load())
 	}

@@ -26,6 +26,23 @@ type JavaRuntime struct {
 	Major                          int
 }
 
+// Instance is an independent game directory with a selected version.
+// Its identity and directory survive an explicit change of VersionID.
+type Instance struct {
+	ID        string `json:"id"`
+	VersionID string `json:"version"`
+	Directory string `json:"-"`
+}
+
+// Installation locates a version's local files for a target runtime platform.
+// Reading its metadata does not prove that its files are still intact.
+// It is shared by instances; saves and player settings belong to Instance.
+type Installation struct {
+	Version   GameVersion
+	Directory string
+	Platform  Platform
+}
+
 type VersionManifest struct {
 	Latest struct {
 		Release  string `json:"release"`

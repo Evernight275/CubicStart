@@ -8,7 +8,7 @@
 - 安装现代原版客户端、依赖、资源和日志配置，支持并发下载、重试、SHA-1 校验与缓存修复。
 - 检查本机 Java 路径、版本和架构，启动时按游戏元数据检查 Java 要求。
 - 微软设备代码登录、会话刷新、账号查询和退出登录；使用系统凭据库保存刷新令牌。
-- 按版本隔离游戏目录，构建启动参数并转发游戏日志和退出状态。
+- 独立游戏实例共享已安装版本，分别保存存档和设置；构建启动参数并转发游戏日志和退出状态。
 - 显式离线启动，以及隐藏访问令牌的 `--dry-run` 参数预览。
 
 当前支持使用 `arguments.jvm` / `arguments.game` 的现代原版版本，已验证 1.21.1 的安装和参数生成。旧版启动参数、旧资源目录、模组加载器、整合包和自动安装 Java 暂不支持。
@@ -41,6 +41,18 @@ go build -o bin/cubicstart.exe ./cmd/cubicstart
 .\bin\cubicstart.exe launch 1.21.1 --offline --username Player --dry-run
 ```
 
+使用独立实例；首次指定版本，后续可以直接按实例名称启动：
+
+```powershell
+.\bin\cubicstart.exe launch 1.21.1 --instance survival
+.\bin\cubicstart.exe launch 1.21.1 --instance creative
+.\bin\cubicstart.exe launch --instance survival
+```
+
+同一版本的实例共享客户端、依赖和资源，但存档、设置和游戏日志分别保存在各自目录。显式执行 `launch <另一个已安装版本> --instance survival` 会更新该实例选择的版本，并继续使用原游戏目录。只有启动准备成功才保存版本选择；`--dry-run` 不保存选择。
+
+省略 `--instance` 时，仍使用版本号作为实例名称，沿用已有目录和存档。实例名称使用可作为目录名的字母、数字、点、下划线、加号或连字符，且以字母或数字开头。
+
 离线身份不会提供正版服务器认证；登录失败也不会自动切换到离线模式。`--dry-run` 会清理预览期间创建的临时原生库目录，因此输出用于检查，不应直接复制为启动脚本。
 
 Linux / macOS 可使用 `go build -o bin/cubicstart ./cmd/cubicstart` 构建；这些平台尚未完成实际游戏验收。凭据存储依赖对应系统的 Keychain / Secret Service，服务不可用时会明确报错，不回退到明文文件。
@@ -55,7 +67,8 @@ Linux / macOS 可使用 `go build -o bin/cubicstart ./cmd/cubicstart` 构建；�
 | `login --client-id ID` | 使用个人微软账号登录，终端显示授权网址和验证码 |
 | `whoami` | 刷新会话并显示当前玩家名称、UUID |
 | `logout` | 删除本启动器在系统凭据库中保存的登录状态 |
-| `launch <version> --memory 2048` | 启动已安装版本，内存单位为 MiB |
+| `launch <version> --instance NAME --memory 2048` | 使用独立实例启动已安装版本；省略实例名时默认使用版本号，内存单位为 MiB |
+| `launch --instance NAME` | 使用该实例已保存的版本启动 |
 | `paths` | 显示数据目录布局 |
 | `version` | 显示启动器版本 |
 
@@ -71,10 +84,13 @@ libraries/                公共 Java 依赖缓存
 assets/indexes/           资源索引
 assets/objects/           按哈希存储的资源
 assets/log_configs/       官方日志配置
-instances/<version>/      各版本的存档、设置和游戏日志
+instances/<instance>/     独立实例的存档、设置和游戏日志
+  .cubicstart-instance.json 实例标识及所选版本，不保存绝对路径或凭据
 ```
 
 中断或失败后重新执行相同的 `install` 命令，会校验并复用已经完整下载的文件，重新下载缺失或损坏文件。安装文件与其他启动器的数据目录分开管理。
+
+版本 JSON 是安装记录，不保证文件一直完整。每次启动准备会按所选 Java 的目标平台校验客户端、依赖、原生库、资源索引、资源和日志配置的大小与 SHA-1；缺失或损坏时要求重新执行 `install`。这一步只读取本地文件，在刷新账号会话之前完成，耗时随安装文件数量和磁盘速度变化。
 
 ## 微软应用配置
 
@@ -104,7 +120,7 @@ go vet ./...
 
 `internal` 下每个包的唯一对外入口必须是 `interface.go`。详见 [分层说明](internal/README.md) 和 [强制约束](internal/AGENTS.md)，根目录架构测试会检查这项规则。
 
-跨包共享的版本、资源、规则、玩家、会话和 Java 环境模型集中定义在 [internal/core/interface.go](internal/core/interface.go)。`core` 只依赖标准库，其他职责包直接使用这些模型。
+跨包共享的版本、本地安装、游戏实例、资源、规则、玩家、会话和 Java 环境模型集中定义在 [internal/core/interface.go](internal/core/interface.go)。`GameVersion` 描述版本内容与要求，`Installation` 定位本地版本文件及目标平台，`Instance` 标识独立游戏目录与所选版本。`core` 只依赖标准库，其他职责包直接使用这些模型。
 
 ## License
 

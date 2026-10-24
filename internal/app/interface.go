@@ -28,9 +28,10 @@ type Options struct {
 	Workers           int
 }
 type LaunchOptions struct {
-	Version, JavaPath, Username string
-	Offline                     bool
-	MemoryMB                    int
+	Version, Instance, JavaPath, Username string
+	Offline                               bool
+	Preview                               bool
+	MemoryMB                              int
 }
 
 // DataPaths resolves the launcher's data directories.
@@ -42,7 +43,7 @@ func Versions(ctx context.Context, options Options, kind string) ([]core.Version
 }
 
 // Install downloads and verifies one complete vanilla installation.
-func Install(ctx context.Context, options Options, id string, report func(download.Progress)) (core.GameVersion, error) {
+func Install(ctx context.Context, options Options, id string, report func(download.Progress)) (core.Installation, error) {
 	return install(ctx, options, id, report)
 }
 
@@ -57,7 +58,8 @@ func Login(ctx context.Context, clientID string, notify func(auth.DeviceCode)) (
 func Whoami(ctx context.Context) (core.Player, error) { return whoami(ctx) }
 func Logout() error                                   { return auth.Logout() }
 
-// PrepareLaunch resolves an installed version, Java runtime and player session.
+// PrepareLaunch resolves an instance, installation, Java runtime and session.
+// Successful preparation remembers the instance's version unless Preview is set.
 func PrepareLaunch(ctx context.Context, root string, options LaunchOptions) (launch.Plan, error) {
 	paths, err := config.Resolve(root)
 	if err != nil {

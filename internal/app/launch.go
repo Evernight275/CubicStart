@@ -4,35 +4,58 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/Evernight275/cubicstart/internal/config"
 	"github.com/Evernight275/cubicstart/internal/core"
+	"github.com/Evernight275/cubicstart/internal/installation"
 	"github.com/Evernight275/cubicstart/internal/launch"
 	"github.com/Evernight275/cubicstart/internal/metadata"
 )
+
+func resolveInstance(paths config.Paths, options LaunchOptions) (core.Instance, error) {
+	id := options.Instance
+	if id == "" {
+		id = options.Version
+	}
+	if err := config.ValidID(id); err != nil {
+		return core.Instance{}, fmt.Errorf("invalid instance ID: %w", err)
+	}
+	instance, err := config.ReadInstance(paths, id)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return core.Instance{}, err
+		}
+		if options.Version == "" {
+			return core.Instance{}, fmt.Errorf("instance %q does not exist; provide a version to create it", id)
+		}
+		instance = core.Instance{ID: id, Directory: filepath.Join(paths.Instances, id)}
+	}
+	if options.Version != "" {
+		if err := config.ValidID(options.Version); err != nil {
+			return core.Instance{}, err
+		}
+		instance.VersionID = options.Version
+	}
+	return instance, nil
+}
 
 func prepareLaunch(ctx context.Context, paths config.Paths, options LaunchOptions,
 	checkJava func(context.Context, string) (core.JavaRuntime, error),
 	refreshSession func(context.Context) (core.Session, error),
 ) (launch.Plan, error) {
-	if err := config.ValidID(options.Version); err != nil {
-		return launch.Plan{}, err
-	}
-	path := filepath.Join(paths.Versions, options.Version, options.Version+".json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return launch.Plan{}, fmt.Errorf("version %s is not installed; run cubicstart install %s: %w", options.Version, options.Version, err)
-	}
-	version, err := metadata.ParseVersion(raw)
+	instance, err := resolveInstance(paths, options)
 	if err != nil {
 		return launch.Plan{}, err
 	}
-	if version.ID != options.Version {
-		return launch.Plan{}, fmt.Errorf("installed metadata has an unexpected version ID")
+	installed, err := installation.Read(paths, instance.VersionID, metadata.CurrentPlatform())
+	if err != nil {
+		return launch.Plan{}, err
 	}
+	version := installed.Version
 	runtime, err := checkJava(ctx, options.JavaPath)
 	if err != nil {
 		return launch.Plan{}, err
@@ -43,8 +66,10 @@ func prepareLaunch(ctx context.Context, paths config.Paths, options LaunchOption
 	if runtime.Arch == "x86" || runtime.Arch == "i386" {
 		return launch.Plan{}, fmt.Errorf("v0.1 requires a 64-bit Java runtime")
 	}
-	platform := metadata.CurrentPlatform()
-	platform.Arch, platform.Version = runtime.Arch, runtime.OSVersion
+	installed.Platform.Arch, installed.Platform.Version = runtime.Arch, runtime.OSVersion
+	if err := installation.Verify(ctx, paths, installed); err != nil {
+		return launch.Plan{}, err
+	}
 	var session core.Session
 	if options.Offline {
 		session, err = launch.OfflineSession(options.Username)
@@ -54,5 +79,15 @@ func prepareLaunch(ctx context.Context, paths config.Paths, options LaunchOption
 	if err != nil {
 		return launch.Plan{}, err
 	}
-	return launch.Prepare(ctx, launch.Options{Version: version, Paths: paths, Java: runtime, Platform: platform, Session: session, MemoryMB: options.MemoryMB})
+	plan, err := launch.Prepare(ctx, launch.Options{Installation: installed, Instance: instance, Paths: paths, Java: runtime, Session: session, MemoryMB: options.MemoryMB})
+	if err != nil {
+		return launch.Plan{}, err
+	}
+	if !options.Preview {
+		if err := config.SaveInstance(paths, instance); err != nil {
+			_ = plan.Close()
+			return launch.Plan{}, fmt.Errorf("save instance selection: %w", err)
+		}
+	}
+	return plan, nil
 }

@@ -17,7 +17,7 @@ func validID(id string) error {
 	reserved := base == "CON" || base == "PRN" || base == "AUX" || base == "NUL" ||
 		regexp.MustCompile(`^(COM|LPT)[0-9]$`).MatchString(base)
 	if !idPattern.MatchString(id) || strings.Contains(id, "..") || strings.HasSuffix(id, ".") || reserved {
-		return fmt.Errorf("invalid version identifier %q", id)
+		return fmt.Errorf("invalid directory identifier %q", id)
 	}
 	return nil
 }

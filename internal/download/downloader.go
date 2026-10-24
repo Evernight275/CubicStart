@@ -45,21 +45,44 @@ func validate(file File) error {
 	return nil
 }
 
-func validCached(file File) bool {
+func verify(ctx context.Context, file File) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := validate(file); err != nil {
+		return err
+	}
 	f, err := os.Open(file.Path)
 	if err != nil {
-		return false
+		return err
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != file.Size {
-		return false
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() != file.Size {
+		return fmt.Errorf("file type or size mismatch: %s", file.Path)
 	}
 	hash := sha1.New()
-	if _, err := io.Copy(hash, f); err != nil {
-		return false
+	buffer := make([]byte, 32<<10)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		n, err := f.Read(buffer)
+		_, _ = hash.Write(buffer[:n])
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
 	}
-	return strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), file.SHA1)
+	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), file.SHA1) {
+		return fmt.Errorf("SHA-1 mismatch: %s", file.Path)
+	}
+	return nil
 }
 
 func (d *downloader) Fetch(ctx context.Context, file File) error {
@@ -69,7 +92,7 @@ func (d *downloader) Fetch(ctx context.Context, file File) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if validCached(file) {
+	if verify(ctx, file) == nil {
 		return nil
 	}
 	var last error

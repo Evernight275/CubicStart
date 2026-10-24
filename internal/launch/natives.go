@@ -16,11 +16,11 @@ import (
 )
 
 func extractNatives(ctx context.Context, options Options, dest string) error {
-	for _, library := range options.Version.Libraries {
-		if _, ok := library.Natives[options.Platform.OS]; !ok {
+	for _, library := range options.Installation.Version.Libraries {
+		if _, ok := library.Natives[options.Installation.Platform.OS]; !ok {
 			continue
 		}
-		files, err := metadata.LibraryFiles(library, options.Platform)
+		files, err := metadata.LibraryFiles(library, options.Installation.Platform)
 		if err != nil {
 			return err
 		}
