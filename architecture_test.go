@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,36 @@ func TestInternalPackageEntrypoints(t *testing.T) {
 		if path != publicFile {
 			for _, ident := range publicDeclarations(file) {
 				t.Errorf("%s: move public declaration %s to %s", fset.Position(ident.Pos()), ident.Name, publicFile)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCoreImportsOnlyStandardLibrary(t *testing.T) {
+	err := filepath.WalkDir(filepath.Join("internal", "core"), func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, spec := range file.Imports {
+			importPath, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				return err
+			}
+			// Standard-library import paths have no domain in their first component.
+			first, _, _ := strings.Cut(importPath, "/")
+			if strings.Contains(first, ".") || strings.HasPrefix(importPath, "github.com/Evernight275/cubicstart/") {
+				t.Errorf("%s: core must not depend on implementation or third-party package %s", path, importPath)
 			}
 		}
 		return nil
